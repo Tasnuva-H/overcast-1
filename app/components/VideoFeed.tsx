@@ -3,7 +3,7 @@
 // VideoFeed component using Daily React hooks
 // Handles video display and local participant controls for the Overcast classroom
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   useParticipantIds,
   useDaily,
@@ -13,6 +13,8 @@ import {
   DailyVideo 
 } from '@daily-co/daily-react';
 import { DailyParticipant } from '@daily-co/daily-js';
+import CameraSelector from './CameraSelector';
+import MicrophoneSelector from './MicrophoneSelector';
 
 interface VideoFeedProps {
   /** Whether to show local participant video */
@@ -50,8 +52,11 @@ export default function VideoFeed({
   const daily = useDaily();
   const localParticipant = useLocalParticipant();
   const { screens } = useScreenShare();
-  // useDevices() available for future device selection features
+  // useDevices() provides camera/microphone device information for selection
   useDevices();
+  
+  // State for showing device settings
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
   // Get all participant objects from the Daily call
   const participants: DailyParticipant[] = React.useMemo(() => {
@@ -95,6 +100,45 @@ export default function VideoFeed({
           type="video"
           className="w-full h-full object-cover"
         />
+        
+        {/* Settings button for local video */}
+        {isLocal && (
+          <button
+            onClick={() => setShowDeviceSettings(!showDeviceSettings)}
+            className="absolute top-2 right-2 p-2 bg-gray-800/80 hover:bg-gray-700 rounded-lg transition-colors"
+            title="Camera and microphone settings"
+          >
+            <span className="text-white text-sm">⚙️</span>
+          </button>
+        )}
+        
+        {/* Device settings panel for local video */}
+        {isLocal && showDeviceSettings && (
+          <div className="absolute top-12 right-2 bg-gray-800 border border-gray-600 rounded-lg p-4 shadow-lg z-10 min-w-[250px]">
+            <h3 className="text-white font-medium mb-3 text-sm">Device Settings</h3>
+            
+            <div className="space-y-3">
+              <CameraSelector 
+                onCameraChange={(deviceId) => {
+                  console.log('[VideoFeed] Camera changed:', deviceId);
+                }}
+              />
+              
+              <MicrophoneSelector 
+                onMicrophoneChange={(deviceId) => {
+                  console.log('[VideoFeed] Microphone changed:', deviceId);
+                }}
+              />
+            </div>
+            
+            <button
+              onClick={() => setShowDeviceSettings(false)}
+              className="mt-3 w-full px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        )}
         
         {/* Participant info overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">

@@ -5,6 +5,7 @@ A futuristic video classroom application built with Next.js and Daily.co, featur
 ## Features
 
 - **Main Lobby**: Browse 6 available classrooms with minimal, futuristic design
+- **Device Selection**: Test and select camera/microphone before joining, or switch devices during calls
 - **Student Mode**: Join classrooms, view video feeds, switch between rooms
 - **Instructor Mode**: All student features plus participant muting and breakout room management
 - **Real-time Video**: Powered by Daily.co with support for up to 50 participants per classroom
@@ -131,9 +132,11 @@ npm run type-check
 
 ### Student Journey
 1. Open application → see main lobby with 6 classrooms
-2. Click classroom → enter name → join as student
-3. View live video feed with other participants
-4. Return to lobby or switch to different classroom
+2. (Optional) Test camera and microphone using "Test Camera & Microphone" button
+3. Click classroom → enter name → join as student
+4. View live video feed with other participants
+5. (Optional) Click settings gear on your video to change camera/microphone
+6. Return to lobby or switch to different classroom
 
 ### Instructor Journey
 1. Toggle to "Instructors" mode in lobby

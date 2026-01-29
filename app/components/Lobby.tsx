@@ -5,6 +5,7 @@ import { DAILY_ROOMS } from '@/lib/daily-config';
 import { UI_CONSTANTS } from '@/lib/constants';
 import { Classroom, AppUser } from '@/lib/types';
 import { isClassroomFull, validateUserName } from '@/lib/daily-utils';
+import DevicePreview from './DevicePreview';
 
 interface LobbyProps {
   onJoinClassroom: (classroomId: string, user: AppUser) => void;
@@ -179,6 +180,7 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
   const [classroomStates, setClassroomStates] = useState<Record<string, { participantCount: number; isActive: boolean }>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
+  const [showDevicePreview, setShowDevicePreview] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
 
@@ -320,9 +322,17 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
           <>
             <div className="mb-8 text-center">
               <h2 className="text-2xl font-semibold mb-2">Welcome, {user.name}!</h2>
-              <p className="text-gray-400">
+              <p className="text-gray-400 mb-4">
                 Select a classroom to join as {user.role === 'instructor' ? 'an instructor' : 'a student'}
               </p>
+              
+              {/* Device test button */}
+              <button
+                onClick={() => setShowDevicePreview(true)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors border border-gray-600"
+              >
+                🎥 Test Camera & Microphone
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -352,6 +362,11 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
                   </p>
                 </div>
               </div>
+            )}
+
+            {/* Device preview modal */}
+            {showDevicePreview && (
+              <DevicePreview onClose={() => setShowDevicePreview(false)} />
             )}
           </>
         )}
