@@ -185,7 +185,6 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
   
   const [user, setUser] = useState<Omit<AppUser, 'sessionId' | 'currentClassroom' | 'joinedAt'> | null>(null);
   const [classroomStates, setClassroomStates] = useState<Record<string, { participantCount: number; isActive: boolean }>>({});
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
   const [showDevicePreview, setShowDevicePreview] = useState(false);
   /** Pending join: when set, show video options screen instead of grid (no direct lobby-to-classroom path). */
@@ -331,7 +330,7 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
         {/* User Form */}
         {!user && (
           <div className="max-w-md mx-auto">
-            <UserForm onSubmit={handleUserSubmit} disabled={isLoading} />
+            <UserForm onSubmit={handleUserSubmit} disabled={false} />
           </div>
         )}
 
@@ -364,7 +363,7 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
                     participantCount={state.participantCount}
                     isActive={state.isActive}
                     onJoin={handleJoinClassroom}
-                    disabled={isLoading || selectedClassroom === classroom.id}
+                    disabled={selectedClassroom === classroom.id}
                   />
                 );
               })}

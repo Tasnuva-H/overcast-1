@@ -8,7 +8,7 @@
  * where they can change mirror and see Filters (placeholder) before entering the room.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DailyProvider, useDaily, useLocalParticipant, DailyVideo } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
 import { parseDailyError } from '@/lib/daily-utils';
@@ -43,7 +43,7 @@ function VideoOptionsContent({
   const [isStarted, setIsStarted] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  const startPreview = async () => {
+  const startPreview = useCallback(async () => {
     if (!daily) return;
     setCameraError(null);
     try {
@@ -53,13 +53,13 @@ function VideoOptionsContent({
       const parsed = parseDailyError(err);
       setCameraError(parsed.message);
     }
-  };
+  }, [daily]);
 
   useEffect(() => {
     if (!daily || isStarted) return;
     startPreview();
     return () => {};
-  }, [daily, isStarted]);
+  }, [daily, isStarted, startPreview]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">

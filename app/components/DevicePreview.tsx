@@ -10,7 +10,7 @@
  * a classroom. This reduces technical issues and improves the user experience.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DailyProvider, useDaily, useDevices, DailyVideo, useLocalParticipant } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
 import { parseDailyError } from '@/lib/daily-utils';
@@ -33,7 +33,7 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Start local media preview
-  const startPreview = async () => {
+  const startPreview = useCallback(async () => {
     if (!daily) return;
     setError(null);
     try {
@@ -46,13 +46,13 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
       const parsed = parseDailyError(err);
       setError(parsed.message);
     }
-  };
+  }, [daily]);
 
   useEffect(() => {
     if (!daily || isStarted) return;
     startPreview();
     return () => {};
-  }, [daily, isStarted]);
+  }, [daily, isStarted, startPreview]);
 
   // Handle camera change
   const handleCameraChange = async (deviceId: string) => {
