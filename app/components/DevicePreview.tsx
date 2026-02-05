@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DailyProvider, useDaily, useDevices, DailyVideo, useLocalParticipant } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
+import { parseDailyError } from '@/lib/daily-utils';
 
 interface DevicePreviewProps {
   onClose?: () => void;
@@ -32,28 +33,25 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Start local media preview
+  const startPreview = async () => {
+    if (!daily) return;
+    setError(null);
+    try {
+      console.log('[DevicePreview] Starting local media preview...');
+      await daily.startCamera();
+      setIsStarted(true);
+      console.log('[DevicePreview] Preview started successfully');
+    } catch (err) {
+      console.error('[DevicePreview] Failed to start preview:', err);
+      const parsed = parseDailyError(err);
+      setError(parsed.message);
+    }
+  };
+
   useEffect(() => {
     if (!daily || isStarted) return;
-
-    const startPreview = async () => {
-      try {
-        console.log('[DevicePreview] Starting local media preview...');
-        await daily.startCamera();
-        setIsStarted(true);
-        console.log('[DevicePreview] Preview started successfully');
-      } catch (err) {
-        console.error('[DevicePreview] Failed to start preview:', err);
-        setError('Failed to access camera/microphone. Please check permissions.');
-      }
-    };
-
     startPreview();
-
-    // Cleanup on unmount - Daily.co automatically stops camera when component unmounts
-    // The parent component handles destroy() in its cleanup
-    return () => {
-      // No explicit cleanup needed - handled by DailyProvider
-    };
+    return () => {};
   }, [daily, isStarted]);
 
   // Handle camera change
@@ -99,10 +97,17 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
           )}
         </div>
 
-        {/* Error message */}
+        {/* Error message + Try again when start preview fails */}
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
-            {error}
+            <p className="mb-2">{error}</p>
+            <button
+              type="button"
+              onClick={startPreview}
+              className="text-teal-400 hover:text-teal-300 font-medium text-sm"
+            >
+              Try again
+            </button>
           </div>
         )}
 

@@ -20,6 +20,9 @@ export enum DailyErrorType {
   NETWORK_ERROR = 'network-error',
   ROOM_FULL = 'room-full',
   INVALID_TOKEN = 'invalid-token',
+  DEVICE_NOT_FOUND = 'device-not-found',
+  DEVICE_IN_USE = 'device-in-use',
+  LOAD_ERROR = 'load-error', // e.g. Daily call object bundle failed to load
   UNKNOWN = 'unknown'
 }
 
@@ -31,25 +34,53 @@ export interface DailyError {
 }
 
 /**
- * Parse Daily.co error into structured format
- * 
- * WHY: Daily.co errors come in various formats. This function
- * normalizes them into a consistent structure for better UX.
+ * Parse Daily.co / getUserMedia error into structured format
+ *
+ * WHY: Errors come as Daily SDK messages, DOMException (NotAllowedError, NotFoundError,
+ * NotReadableError), or bundle load failures. We show the right message so users don't
+ * see "check permissions" when the real cause is e.g. device in use or load failure.
  */
 export function parseDailyError(error: Error | unknown): DailyError {
-  const err = error as { errorMsg?: string; message?: string } | null | undefined;
-  const errorMsg = err?.errorMsg || err?.message || String(error);
-  
-  // Determine error type from message
-  if (errorMsg.includes('permission') || errorMsg.includes('microphone') || errorMsg.includes('camera')) {
+  const err = error as { errorMsg?: string; message?: string; name?: string } | null | undefined;
+  const errorMsg = (err?.errorMsg ?? err?.message ?? String(error)).toLowerCase();
+  const errName = err?.name ?? '';
+
+  // DOMException from getUserMedia
+  if (errName === 'NotAllowedError' || errorMsg.includes('permission') || errorMsg.includes('denied') || errorMsg.includes('blocked')) {
     return {
       type: DailyErrorType.PERMISSION_DENIED,
-      message: 'Camera or microphone access denied. Please allow permissions and try again.',
+      message: 'Camera or microphone access denied. Please allow access in your browser and try again.',
       originalError: error,
       isRetryable: true
     };
   }
-  
+  if (errName === 'NotFoundError' || errorMsg.includes('no device') || errorMsg.includes('not found')) {
+    return {
+      type: DailyErrorType.DEVICE_NOT_FOUND,
+      message: 'No camera or microphone found. Check that devices are connected and try again.',
+      originalError: error,
+      isRetryable: true
+    };
+  }
+  if (errName === 'NotReadableError' || errName === 'AbortError' || errorMsg.includes('in use') || errorMsg.includes('could not start')) {
+    return {
+      type: DailyErrorType.DEVICE_IN_USE,
+      message: 'Camera or microphone is in use by another app. Close other apps using the device and try again.',
+      originalError: error,
+      isRetryable: true
+    };
+  }
+
+  // Daily call object bundle / load failure (often shows as "window._daily.instances" or "call-machine")
+  if (errorMsg.includes('call object bundle') || errorMsg.includes('call-machine') || errorMsg.includes('_daily.instances')) {
+    return {
+      type: DailyErrorType.LOAD_ERROR,
+      message: 'Video system didn’t load in time. Please close this and try again.',
+      originalError: error,
+      isRetryable: true
+    };
+  }
+
   if (errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('connection')) {
     return {
       type: DailyErrorType.NETWORK_ERROR,

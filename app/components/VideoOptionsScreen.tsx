@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DailyProvider, useDaily, useLocalParticipant, DailyVideo } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
+import { parseDailyError } from '@/lib/daily-utils';
 import { AppUser } from '@/lib/types';
 
 export interface VideoOptionsScreenProps {
@@ -40,19 +41,23 @@ function VideoOptionsContent({
   const daily = useDaily();
   const localParticipant = useLocalParticipant();
   const [isStarted, setIsStarted] = useState(false);
-  const [cameraError, setCameraError] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const startPreview = async () => {
+    if (!daily) return;
+    setCameraError(null);
+    try {
+      await daily.startCamera();
+      setIsStarted(true);
+    } catch (err) {
+      const parsed = parseDailyError(err);
+      setCameraError(parsed.message);
+    }
+  };
 
   useEffect(() => {
     if (!daily || isStarted) return;
-    const start = async () => {
-      try {
-        await daily.startCamera();
-        setIsStarted(true);
-      } catch {
-        setCameraError(true);
-      }
-    };
-    start();
+    startPreview();
     return () => {};
   }, [daily, isStarted]);
 
@@ -88,9 +93,19 @@ function VideoOptionsContent({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
                 {cameraError ? (
-                  <p className="text-sm">Camera unavailable. You can still continue.</p>
+                  <>
+                    <p className="text-sm text-center">{cameraError}</p>
+                    <button
+                      type="button"
+                      onClick={startPreview}
+                      className="text-teal-400 hover:text-teal-300 font-medium text-sm"
+                    >
+                      Try again
+                    </button>
+                    <p className="text-xs text-gray-500">You can still continue without preview.</p>
+                  </>
                 ) : (
                   <>
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500 mr-3" />
