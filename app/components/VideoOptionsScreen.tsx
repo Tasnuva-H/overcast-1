@@ -158,7 +158,8 @@ export default function VideoOptionsScreen({
   onProceed,
   onBack,
 }: VideoOptionsScreenProps) {
-  const [mirrorEnabled, setMirrorEnabled] = useState(true);
+  // Default off (unmirrored) per spec 005; user can turn mirror on before entering room.
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
   const callRef = useRef<DailyCall | null>(null);
 

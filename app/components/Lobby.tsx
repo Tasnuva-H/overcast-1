@@ -5,6 +5,7 @@ import { DAILY_ROOMS } from '@/lib/daily-config';
 import { UI_CONSTANTS } from '@/lib/constants';
 import { Classroom, AppUser } from '@/lib/types';
 import { isClassroomFull, validateUserName } from '@/lib/daily-utils';
+import { destroyClassroomCall } from '@/lib/daily-classroom-call';
 import DevicePreview from './DevicePreview';
 import VideoOptionsScreen from './VideoOptionsScreen';
 
@@ -195,6 +196,12 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
   } | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
+
+  // Clear any leftover classroom Daily call when Lobby mounts (e.g. user navigated back).
+  // This prevents "Duplicate DailyIframe" when opening DevicePreview.
+  useEffect(() => {
+    destroyClassroomCall();
+  }, []);
 
   // Convert DAILY_ROOMS to Classroom interface format
   const classrooms: Classroom[] = DAILY_ROOMS.map(room => ({

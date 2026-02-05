@@ -3,16 +3,18 @@
 // VideoFeed component using Daily React hooks
 // Handles video display and local participant controls for the Overcast classroom
 
-import React, { useState } from 'react';
-import { 
+import React, { useState, useEffect, useRef } from 'react';
+import {
   useParticipantIds,
   useDaily,
   useLocalParticipant,
   useDevices,
   useScreenShare,
-  DailyVideo 
+  useMediaTrack,
+  DailyVideo,
 } from '@daily-co/daily-react';
 import { DailyParticipant } from '@daily-co/daily-js';
+import { MIRROR_CUSTOM_TRACK_NAME } from '@/lib/mirrored-video-track';
 import CameraSelector from './CameraSelector';
 import MicrophoneSelector from './MicrophoneSelector';
 
@@ -26,27 +28,39 @@ interface VideoFeedProps {
   /** CSS class for styling */
   className?: string;
   /**
-   * When true, local participant video is displayed mirrored (selfie-style).
-   * Per spec this should also affect the stream others see; Daily.co does not expose
-   * a built-in mirror-for-published-stream API, so we apply display mirror here.
-   * Stream-level mirror would require a custom video track (e.g. canvas flip) and is left for future work.
+   * When true, local video is displayed mirrored and the published stream is mirrored
+   * (others see the user mirrored). Implemented via a custom canvas-flipped track when mirror is on.
    */
   mirrorLocalVideo?: boolean;
 }
 
+/** Renders a <video> element bound to a MediaStreamTrack (e.g. custom mirror track). */
+function VideoFromTrack({ track, className }: { track: MediaStreamTrack; className?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !track) return;
+    el.srcObject = new MediaStream([track]);
+    return () => {
+      el.srcObject = null;
+    };
+  }, [track]);
+  return <video ref={ref} autoPlay playsInline muted className={className} />;
+}
+
 /**
  * VideoFeed Component
- * 
+ *
  * Displays video feeds from Daily.co using React hooks.
  * Shows local participant video and remote participants in a grid layout.
  * Handles screen sharing display when active.
- * 
+ *
  * Uses Daily React hooks:
  * - useParticipantIds(): Get all participant IDs in the call
  * - useDaily(): Get Daily call object to access participant data
  * - useLocalParticipant(): Get local participant data
  * - useScreenShare(): Handle screen sharing state
- * - useDevices(): Access camera/microphone devices
+ * - useDevices(): Access camera/microphone device information
  */
 export default function VideoFeed({
   showLocalVideo = true,
@@ -62,7 +76,13 @@ export default function VideoFeed({
   const { screens } = useScreenShare();
   // useDevices() provides camera/microphone device information for selection
   useDevices();
-  
+
+  /** When mirror is on, we publish a custom "mirror-video" track; use it for local tile if playable */
+  const localMirrorTrack = useMediaTrack(
+    localParticipant?.session_id ?? '',
+    MIRROR_CUSTOM_TRACK_NAME
+  );
+
   // State for showing device settings
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
@@ -92,7 +112,12 @@ export default function VideoFeed({
   const renderParticipantVideo = (participant: DailyParticipant, isLocal = false) => {
     const participantName = participant.user_name || 'Anonymous';
     const isInstructor = (participant.userData as { role?: string } | undefined)?.role === 'instructor';
-    const applyMirror = isLocal && mirrorLocalVideo;
+    const useCustomMirrorTrack =
+      isLocal &&
+      mirrorLocalVideo &&
+      localMirrorTrack?.persistentTrack &&
+      localMirrorTrack?.state === 'playable';
+    const applyMirrorCss = isLocal && mirrorLocalVideo && !useCustomMirrorTrack;
 
     return (
       <div
@@ -101,15 +126,22 @@ export default function VideoFeed({
           relative rounded-lg overflow-hidden bg-gray-900 border-2
           ${isInstructor ? 'border-teal-400' : 'border-gray-600'}
           ${isLocal ? 'border-blue-400' : ''}
-          ${applyMirror ? 'scale-x-[-1]' : ''}
+          ${applyMirrorCss ? 'scale-x-[-1]' : ''}
         `}
       >
-        {/* Video element */}
-        <DailyVideo
-          sessionId={participant.session_id}
-          type="video"
-          className="w-full h-full object-cover"
-        />
+        {/* Video: custom mirror track when mirror on (stream is already flipped), else DailyVideo */}
+        {useCustomMirrorTrack ? (
+          <VideoFromTrack
+            track={localMirrorTrack.persistentTrack!}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <DailyVideo
+            sessionId={participant.session_id}
+            type="video"
+            className="w-full h-full object-cover"
+          />
+        )}
         
         {/* Settings button for local video */}
         {isLocal && (

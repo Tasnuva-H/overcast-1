@@ -28,7 +28,8 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   const [isStarted, setIsStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Mirror is preview-only here; the authoritative value for the call is set on the video options screen at "Enter room"
-  const [mirrorEnabled, setMirrorEnabled] = useState(true);
+  // Default off (unmirrored) per spec 005; user can turn mirror on in device setup.
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Start local media preview
   useEffect(() => {
@@ -202,9 +203,42 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   );
 }
 
+// Module-level single preview call so we never run createCallObject() twice (avoids
+// "Duplicate DailyIframe" when React Strict Mode runs the effect twice before first create completes).
+let previewCall: DailyCall | null = null;
+let previewCreatePromise: Promise<DailyCall> | null = null;
+let previewRefCount = 0;
+
+function getOrCreatePreviewCall(): Promise<DailyCall> {
+  if (previewCall) return Promise.resolve(previewCall);
+  if (previewCreatePromise) return previewCreatePromise;
+  previewCreatePromise = (async () => {
+    const Daily = (await import('@daily-co/daily-js')).default;
+    console.log('[DevicePreview] Creating call object for preview...');
+    const call = Daily.createCallObject({
+      audioSource: true,
+      videoSource: true,
+    });
+    previewCall = call;
+    return call;
+  })();
+  return previewCreatePromise;
+}
+
+function releasePreviewCall(): void {
+  previewRefCount--;
+  if (previewRefCount <= 0 && previewCall) {
+    console.log('[DevicePreview] Cleaning up Daily call object...');
+    previewCall.destroy();
+    previewCall = null;
+    previewCreatePromise = null;
+    previewRefCount = 0;
+  }
+}
+
 /**
  * DevicePreview wrapper with DailyProvider.
- * Uses ref + empty deps so we create only one Daily call object (avoids "Duplicate DailyIframe" error).
+ * Uses module-level single create so only one Daily call exists (avoids "Duplicate DailyIframe" error).
  */
 export default function DevicePreview({ onClose }: DevicePreviewProps) {
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
@@ -212,31 +246,26 @@ export default function DevicePreview({ onClose }: DevicePreviewProps) {
 
   useEffect(() => {
     let mounted = true;
-    const initializeDaily = async () => {
-      try {
-        const Daily = (await import('@daily-co/daily-js')).default;
-        console.log('[DevicePreview] Creating call object for preview...');
-        const call = Daily.createCallObject({
-          audioSource: true,
-          videoSource: true,
-        });
-        if (mounted) {
-          callRef.current = call;
-          setDailyCall(call);
-        } else {
+    getOrCreatePreviewCall()
+      .then((call) => {
+        if (!mounted) {
           call.destroy();
+          previewCall = null;
+          previewCreatePromise = null;
+          return;
         }
-      } catch (error) {
+        previewRefCount++;
+        callRef.current = call;
+        setDailyCall(call);
+      })
+      .catch((error) => {
         console.error('[DevicePreview] Failed to initialize Daily:', error);
-      }
-    };
-    initializeDaily();
+      });
     return () => {
       mounted = false;
       if (callRef.current) {
-        console.log('[DevicePreview] Cleaning up Daily call object...');
-        callRef.current.destroy();
         callRef.current = null;
+        releasePreviewCall();
       }
       setDailyCall(null);
     };

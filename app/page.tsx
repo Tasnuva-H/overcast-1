@@ -27,11 +27,11 @@ export default function Home() {
    *
    * @param classroomId - The ID of the classroom to join
    * @param user - The user data including name, role, sessionId
-   * @param options - Optional; mirror preference from video options (default true)
+   * @param options - Optional; mirror preference from video options (default false per spec 005)
    */
   const handleJoinClassroom = useCallback(
     (classroomId: string, user: AppUser, options?: { mirror?: boolean }) => {
-      const mirror = options?.mirror ?? true;
+      const mirror = options?.mirror ?? false;
       const params = new URLSearchParams({
         name: user.name,
         role: user.role,

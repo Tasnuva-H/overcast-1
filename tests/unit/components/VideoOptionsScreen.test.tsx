@@ -66,6 +66,13 @@ describe('VideoOptionsScreen Component', () => {
     expect(mirrorControl).toBeInTheDocument();
   });
 
+  test('mirror toggle defaults to off (unmirrored) per spec 005', async () => {
+    render(<VideoOptionsScreen {...defaultProps} />);
+    await screen.findByText(/Joining:/i);
+    const mirrorCheckbox = screen.getByRole('checkbox', { name: /mirror/i });
+    expect(mirrorCheckbox).not.toBeChecked();
+  });
+
   test('renders Filters as a link-style option', async () => {
     render(<VideoOptionsScreen {...defaultProps} />);
     await screen.findByText(/Joining:/i);
@@ -92,6 +99,16 @@ describe('VideoOptionsScreen Component', () => {
     await screen.findByText(/Joining:/i);
     const enterButton = screen.getByRole('button', { name: /enter room/i });
     fireEvent.click(enterButton);
-    expect(defaultProps.onProceed).toHaveBeenCalledWith(expect.any(Boolean));
+    expect(defaultProps.onProceed).toHaveBeenCalledWith(false);
+  });
+
+  test('calls onProceed with true when mirror is on and Enter room is clicked', async () => {
+    render(<VideoOptionsScreen {...defaultProps} />);
+    await screen.findByText(/Joining:/i);
+    const mirrorCheckbox = screen.getByRole('checkbox', { name: /mirror/i });
+    fireEvent.click(mirrorCheckbox);
+    const enterButton = screen.getByRole('button', { name: /enter room/i });
+    fireEvent.click(enterButton);
+    expect(defaultProps.onProceed).toHaveBeenCalledWith(true);
   });
 });
