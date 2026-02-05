@@ -1,14 +1,14 @@
 <!--
 Sync Impact Report:
-Version change: [NEW] → 1.0.0
-Modified principles: [NEW CONSTITUTION]
-Added sections: All sections (new constitution)
-Removed sections: None (new constitution)
+Version change: 1.0.0 → 1.0.0 (no amendment; validation only)
+Modified principles: None
+Added sections: None
+Removed sections: None
 Templates requiring updates:
-- ✅ .specify/templates/plan-template.md (constitution check section)
-- ✅ .specify/templates/spec-template.md (requirements alignment)
-- ✅ .specify/templates/tasks-template.md (task categorization)
-- ✅ .specify/templates/agent-file-template.md (code style alignment)
+- ✅ .specify/templates/plan-template.md (Constitution Check aligns with 5 principles)
+- ✅ .specify/templates/spec-template.md (scope/requirements alignment)
+- ✅ .specify/templates/tasks-template.md (Constitution Compliance subsection)
+- ✅ .specify/templates/agent-file-template.md (Code Style references v1.0.0)
 Follow-up TODOs: None
 -->
 
@@ -17,7 +17,7 @@ Follow-up TODOs: None
 ## Core Principles
 
 ### I. Simplicity First
-Code MUST prioritize readability and maintainability over cleverness. Every solution starts with the simplest approach that works. Complex patterns are only introduced when simple solutions prove insufficient, and the complexity MUST be justified in comments or documentation.
+Code MUST prioritize readability and maintainability over cleverness. Every solution starts with the simplest approach that works. Complex patterns are only introduced when simple solutions prove insufficient, and the complexity MUST be justified in comments or documentation. 
 
 **Rationale**: Newcomers to full-stack development need clear, understandable code to learn from. Complex abstractions create barriers to understanding and maintenance.
 

@@ -25,6 +25,13 @@ interface VideoFeedProps {
   maxParticipants?: number;
   /** CSS class for styling */
   className?: string;
+  /**
+   * When true, local participant video is displayed mirrored (selfie-style).
+   * Per spec this should also affect the stream others see; Daily.co does not expose
+   * a built-in mirror-for-published-stream API, so we apply display mirror here.
+   * Stream-level mirror would require a custom video track (e.g. canvas flip) and is left for future work.
+   */
+  mirrorLocalVideo?: boolean;
 }
 
 /**
@@ -45,7 +52,8 @@ export default function VideoFeed({
   showLocalVideo = true,
   showRemoteParticipants = true,
   maxParticipants = 12,
-  className = ''
+  className = '',
+  mirrorLocalVideo = false,
 }: VideoFeedProps) {
   // Daily React hooks for participant management
   const participantIds = useParticipantIds();
@@ -84,18 +92,20 @@ export default function VideoFeed({
   const renderParticipantVideo = (participant: DailyParticipant, isLocal = false) => {
     const participantName = participant.user_name || 'Anonymous';
     const isInstructor = (participant.userData as { role?: string } | undefined)?.role === 'instructor';
-    
+    const applyMirror = isLocal && mirrorLocalVideo;
+
     return (
-      <div 
+      <div
         key={participant.session_id}
         className={`
           relative rounded-lg overflow-hidden bg-gray-900 border-2
           ${isInstructor ? 'border-teal-400' : 'border-gray-600'}
           ${isLocal ? 'border-blue-400' : ''}
+          ${applyMirror ? 'scale-x-[-1]' : ''}
         `}
       >
         {/* Video element */}
-        <DailyVideo 
+        <DailyVideo
           sessionId={participant.session_id}
           type="video"
           className="w-full h-full object-cover"

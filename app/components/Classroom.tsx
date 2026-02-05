@@ -24,12 +24,15 @@ interface ClassroomProps {
   classroomId: string;
   user: AppUser;
   onLeave: () => void;
+  /** When true, local participant video is displayed mirrored (and stream is mirrored for others per spec). */
+  mirrorLocalVideo?: boolean;
 }
 
 interface ClassroomContentProps {
   classroomId: string;
   user: AppUser;
   onLeave: () => void;
+  mirrorLocalVideo?: boolean;
 }
 
 /**
@@ -140,7 +143,7 @@ function ErrorDisplay({ error, onRetry }: { error: string; onRetry: () => void }
  * Main classroom content component (inside DailyProvider)
  * Handles Daily.co integration and participant management
  */
-function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps) {
+function ClassroomContent({ classroomId, user, onLeave, mirrorLocalVideo }: ClassroomContentProps) {
   const daily = useDaily();
   const participantIds = useParticipantIds();
   const localParticipant = useLocalParticipant();
@@ -352,11 +355,12 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
           <div className="h-full flex flex-col">
             {/* Main Video Area */}
             <div className="flex-1 p-4 overflow-auto bg-gray-950">
-              <VideoFeed 
+              <VideoFeed
                 showLocalVideo={true}
                 showRemoteParticipants={true}
                 maxParticipants={12}
                 className="h-full"
+                mirrorLocalVideo={mirrorLocalVideo}
               />
             </div>
 
@@ -406,7 +410,7 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
  * Main Classroom component with DailyProvider wrapper
  * Provides Daily.co context to child components
  */
-export default function Classroom({ classroomId, user, onLeave }: ClassroomProps) {
+export default function Classroom({ classroomId, user, onLeave, mirrorLocalVideo }: ClassroomProps) {
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
   const callRef = React.useRef<DailyCall | null>(null);
 
@@ -493,10 +497,11 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
 
   return (
     <DailyProvider callObject={dailyCall}>
-      <ClassroomContent 
-        classroomId={classroomId} 
-        user={user} 
-        onLeave={onLeave} 
+      <ClassroomContent
+        classroomId={classroomId}
+        user={user}
+        onLeave={onLeave}
+        mirrorLocalVideo={mirrorLocalVideo}
       />
     </DailyProvider>
   );

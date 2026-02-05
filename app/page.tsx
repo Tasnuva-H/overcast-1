@@ -22,21 +22,26 @@ export default function Home() {
   const router = useRouter();
 
   /**
-   * Handle classroom join action
-   * 
-   * WHY: We navigate to the classroom page when a user selects a classroom.
-   * The user data is passed via URL parameters to the classroom page.
-   * In a production app, this would use session storage or server-side
-   * authentication, but for local development we use URL state.
-   * 
+   * Handle classroom join action (called after user proceeds from video options screen).
+   * Passes mirror preference via URL so the classroom can show local video mirrored and apply to stream.
+   *
    * @param classroomId - The ID of the classroom to join
    * @param user - The user data including name, role, sessionId
+   * @param options - Optional; mirror preference from video options (default true)
    */
-  const handleJoinClassroom = useCallback((classroomId: string, user: AppUser) => {
-    // Navigate to the classroom page
-    // The classroom page will handle Daily.co connection
-    router.push(`/classroom/${classroomId}?name=${encodeURIComponent(user.name)}&role=${user.role}&sessionId=${user.sessionId}`);
-  }, [router]);
+  const handleJoinClassroom = useCallback(
+    (classroomId: string, user: AppUser, options?: { mirror?: boolean }) => {
+      const mirror = options?.mirror ?? true;
+      const params = new URLSearchParams({
+        name: user.name,
+        role: user.role,
+        sessionId: user.sessionId,
+        mirror: String(mirror),
+      });
+      router.push(`/classroom/${classroomId}?${params.toString()}`);
+    },
+    [router]
+  );
 
   return (
     <Lobby onJoinClassroom={handleJoinClassroom} />

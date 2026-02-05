@@ -6,9 +6,15 @@ import { UI_CONSTANTS } from '@/lib/constants';
 import { Classroom, AppUser } from '@/lib/types';
 import { isClassroomFull, validateUserName } from '@/lib/daily-utils';
 import DevicePreview from './DevicePreview';
+import VideoOptionsScreen from './VideoOptionsScreen';
+
+/** Options passed when user proceeds from video options screen (e.g. mirror preference). */
+export interface JoinClassroomOptions {
+  mirror?: boolean;
+}
 
 interface LobbyProps {
-  onJoinClassroom: (classroomId: string, user: AppUser) => void;
+  onJoinClassroom: (classroomId: string, user: AppUser, options?: JoinClassroomOptions) => void;
 }
 
 interface ClassroomCardProps {
@@ -181,6 +187,12 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
   const [showDevicePreview, setShowDevicePreview] = useState(false);
+  /** Pending join: when set, show video options screen instead of grid (no direct lobby-to-classroom path). */
+  const [pendingJoin, setPendingJoin] = useState<{
+    classroomId: string;
+    user: AppUser;
+    classroomName: string;
+  } | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
 
@@ -258,44 +270,43 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
     setUser(userData);
   };
 
+  // When user clicks "Join Classroom", show video options screen (no direct lobby-to-classroom path)
   const handleJoinClassroom = async (classroomId: string) => {
     if (!user) return;
 
-    // Find the selected classroom
     const classroom = classrooms.find(c => c.id === classroomId);
     if (!classroom) {
       console.error('Classroom not found:', classroomId);
       return;
     }
 
-    // Get current participant count for capacity validation
     const state = classroomStates[classroomId] || { participantCount: 0, isActive: false };
-    
-    // Validate capacity before attempting to join
     if (isClassroomFull(state.participantCount, classroom.maxCapacity)) {
       alert(`Classroom "${classroom.name}" is full. Please try another classroom.`);
       return;
     }
 
-    setIsLoading(true);
+    const fullUser: AppUser = {
+      ...user,
+      sessionId: crypto.randomUUID(),
+      currentClassroom: classroomId,
+      joinedAt: new Date(),
+    };
+
     setSelectedClassroom(classroomId);
+    setPendingJoin({ classroomId, user: fullUser, classroomName: classroom.name });
+  };
 
-    try {
-      // Create full user object with session data
-      const fullUser: AppUser = {
-        ...user,
-        sessionId: crypto.randomUUID(),
-        currentClassroom: classroomId,
-        joinedAt: new Date()
-      };
+  const handleVideoOptionsProceed = (mirror: boolean) => {
+    if (!pendingJoin) return;
+    onJoinClassroom(pendingJoin.classroomId, pendingJoin.user, { mirror });
+    setPendingJoin(null);
+    setSelectedClassroom(null);
+  };
 
-      // Call parent handler to initiate classroom join
-      onJoinClassroom(classroomId, fullUser);
-    } catch (error) {
-      console.error('Failed to join classroom:', error);
-      setIsLoading(false);
-      setSelectedClassroom(null);
-    }
+  const handleVideoOptionsBack = () => {
+    setPendingJoin(null);
+    setSelectedClassroom(null);
   };
 
   return (
@@ -352,16 +363,15 @@ export default function Lobby({ onJoinClassroom }: LobbyProps) {
               })}
             </div>
 
-            {isLoading && selectedClassroom && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-gray-900 rounded-lg p-8 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500 mx-auto mb-4"></div>
-                  <p className="text-white text-lg">Joining classroom...</p>
-                  <p className="text-gray-400 text-sm mt-2">
-                    {UI_CONSTANTS.loadingMessages[0]}
-                  </p>
-                </div>
-              </div>
+            {/* Video options screen: shown after Join Classroom (no direct lobby-to-classroom path) */}
+            {pendingJoin && (
+              <VideoOptionsScreen
+                classroomId={pendingJoin.classroomId}
+                classroomName={pendingJoin.classroomName}
+                user={pendingJoin.user}
+                onProceed={handleVideoOptionsProceed}
+                onBack={handleVideoOptionsBack}
+              />
             )}
 
             {/* Device preview modal */}

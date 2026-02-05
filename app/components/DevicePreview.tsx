@@ -10,7 +10,7 @@
  * a classroom. This reduces technical issues and improves the user experience.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DailyProvider, useDaily, useDevices, DailyVideo, useLocalParticipant } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
 
@@ -27,6 +27,8 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   const localParticipant = useLocalParticipant();
   const [isStarted, setIsStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mirror is preview-only here; the authoritative value for the call is set on the video options screen at "Enter room"
+  const [mirrorEnabled, setMirrorEnabled] = useState(true);
 
   // Start local media preview
   useEffect(() => {
@@ -103,10 +105,12 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
           </div>
         )}
 
-        {/* Video preview */}
-        <div className="mb-6">
+        {/* Video preview: mirror toggle flips preview (CSS only; call mirror set on video options at Enter room) */}
+        <div className="mb-4">
           <h3 className="text-white font-medium mb-2 text-sm">Camera Preview</h3>
-          <div className="relative rounded-lg overflow-hidden bg-gray-800 aspect-video">
+          <div
+            className={`relative rounded-lg overflow-hidden bg-gray-800 aspect-video ${mirrorEnabled ? 'scale-x-[-1]' : ''}`}
+          >
             {localParticipant && isStarted ? (
               <DailyVideo
                 sessionId={localParticipant.session_id}
@@ -122,6 +126,21 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Mirror toggle (preview-only; default on for selfie-style view) */}
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="device-preview-mirror"
+            checked={mirrorEnabled}
+            onChange={(e) => setMirrorEnabled(e.target.checked)}
+            className="rounded text-teal-500 focus:ring-teal-500"
+            aria-label="Mirror preview"
+          />
+          <label htmlFor="device-preview-mirror" className="text-gray-300 cursor-pointer text-sm">
+            Mirror preview
+          </label>
         </div>
 
         {/* Camera selection */}
@@ -184,43 +203,44 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
 }
 
 /**
- * DevicePreview wrapper with DailyProvider
+ * DevicePreview wrapper with DailyProvider.
+ * Uses ref + empty deps so we create only one Daily call object (avoids "Duplicate DailyIframe" error).
  */
 export default function DevicePreview({ onClose }: DevicePreviewProps) {
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
+  const callRef = useRef<DailyCall | null>(null);
 
   useEffect(() => {
     let mounted = true;
-
     const initializeDaily = async () => {
       try {
-        // Dynamic import to avoid SSR issues
         const Daily = (await import('@daily-co/daily-js')).default;
-        
         console.log('[DevicePreview] Creating call object for preview...');
         const call = Daily.createCallObject({
           audioSource: true,
-          videoSource: true
+          videoSource: true,
         });
-
         if (mounted) {
+          callRef.current = call;
           setDailyCall(call);
+        } else {
+          call.destroy();
         }
       } catch (error) {
         console.error('[DevicePreview] Failed to initialize Daily:', error);
       }
     };
-
     initializeDaily();
-
     return () => {
       mounted = false;
-      if (dailyCall) {
+      if (callRef.current) {
         console.log('[DevicePreview] Cleaning up Daily call object...');
-        dailyCall.destroy();
+        callRef.current.destroy();
+        callRef.current = null;
       }
+      setDailyCall(null);
     };
-  }, [dailyCall]);
+  }, []);
 
   if (!dailyCall) {
     return (
