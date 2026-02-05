@@ -1,35 +1,43 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DailyProvider, useDaily, useParticipantIds, useLocalParticipant } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
 import { AppUser, ConnectionState, type Classroom } from '@/lib/types';
 import { UI_CONSTANTS } from '@/lib/constants';
 import { getDailyRoomById } from '@/lib/daily-config';
-import { 
-  parseDailyError, 
+import {
+  createMirroredVideoTrack,
+  MIRROR_CUSTOM_TRACK_NAME,
+} from '@/lib/mirrored-video-track';
+import {
+  parseDailyError,
   hasInstructorPermissions,
-  safelyLeaveCall 
+  safelyLeaveCall,
 } from '@/lib/daily-utils';
+import {
+  getClassroomCall,
+  setClassroomCall,
+  getClassroomInitPromise,
+  setClassroomInitPromise,
+  destroyClassroomCall,
+} from '@/lib/daily-classroom-call';
 import InstructorControls from './InstructorControls';
 import VideoFeed from './VideoFeed';
-
-// Module-level singleton to prevent duplicate Daily instances
-// WHY: React strict mode causes effects to run twice, which creates duplicate Daily iframes
-// This singleton ensures only one instance exists at a time across all component mounts
-let dailyCallSingleton: DailyCall | null = null;
-let initializationPromise: Promise<DailyCall> | null = null;
 
 interface ClassroomProps {
   classroomId: string;
   user: AppUser;
   onLeave: () => void;
+  /** When true, local participant video is displayed mirrored (and stream is mirrored for others per spec). */
+  mirrorLocalVideo?: boolean;
 }
 
 interface ClassroomContentProps {
   classroomId: string;
   user: AppUser;
   onLeave: () => void;
+  mirrorLocalVideo?: boolean;
 }
 
 /**
@@ -140,14 +148,17 @@ function ErrorDisplay({ error, onRetry }: { error: string; onRetry: () => void }
  * Main classroom content component (inside DailyProvider)
  * Handles Daily.co integration and participant management
  */
-function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps) {
+function ClassroomContent({ classroomId, user, onLeave, mirrorLocalVideo }: ClassroomContentProps) {
   const daily = useDaily();
   const participantIds = useParticipantIds();
   const localParticipant = useLocalParticipant();
-  
+
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(true);
+
+  /** Cleanup for stream-level mirror (canvas track). Called on leave. */
+  const mirrorCleanupRef = useRef<(() => void) | null>(null);
 
   // Get classroom configuration
   const classroom = getDailyRoomById(classroomId);
@@ -187,10 +198,12 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
       
       console.log('[joinRoom] Join request completed successfully');
 
-      // Apply audio/video settings from config
+      // Apply audio; video: use default camera unless mirror is on (then we use custom mirrored track)
       await daily.setLocalAudio(true);
-      await daily.setLocalVideo(true);
-      
+      if (!mirrorLocalVideo) {
+        await daily.setLocalVideo(true);
+      }
+
       // Apply Daily configuration
       await daily.updateInputSettings({
         audio: {
@@ -217,7 +230,7 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
     } finally {
       setIsJoining(false);
     }
-  }, [daily, classroom, user.name, user.role, user.sessionId]);
+  }, [daily, classroom, user.name, user.role, user.sessionId, mirrorLocalVideo]);
 
   // Handle Daily events
   useEffect(() => {
@@ -275,24 +288,58 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
     };
   }, [daily, joinRoom]);
 
+  // Stream-level mirror: when connected and mirror is on, publish a custom mirrored video track
+  useEffect(() => {
+    if (!daily || connectionState !== 'connected' || !mirrorLocalVideo) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const sourceTrack = stream.getVideoTracks()[0];
+        const { track, stop } = createMirroredVideoTrack(sourceTrack);
+        mirrorCleanupRef.current = () => {
+          stop();
+          stream.getTracks().forEach((t) => t.stop());
+          mirrorCleanupRef.current = null;
+        };
+        await daily.startCustomTrack({ track, trackName: MIRROR_CUSTOM_TRACK_NAME });
+      } catch (err) {
+        console.error('[Classroom] Failed to start mirrored video track:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      mirrorCleanupRef.current?.();
+      mirrorCleanupRef.current = null;
+      daily.stopCustomTrack(MIRROR_CUSTOM_TRACK_NAME).catch(() => {});
+    };
+  }, [daily, connectionState, mirrorLocalVideo]);
+
   // Handle leaving the classroom
   const handleLeave = useCallback(async () => {
     console.log('[Daily] Leaving classroom, destroying singleton...');
-    
+
+    mirrorCleanupRef.current?.();
+    mirrorCleanupRef.current = null;
+    if (daily) {
+      try {
+        await daily.stopCustomTrack(MIRROR_CUSTOM_TRACK_NAME);
+      } catch {
+        // ignore
+      }
+    }
+
     // Use safe leave utility to ensure proper cleanup
     await safelyLeaveCall(daily);
     
     // Destroy the singleton instance
-    if (dailyCallSingleton) {
-      try {
-        dailyCallSingleton.destroy();
-        console.log('[Daily] Singleton destroyed successfully');
-      } catch (e) {
-        console.error('[Daily] Error destroying singleton:', e);
-      }
-      dailyCallSingleton = null;
-      initializationPromise = null;
-    }
+    destroyClassroomCall();
+    console.log('[Daily] Singleton destroyed successfully');
     
     onLeave();
   }, [daily, onLeave]);
@@ -352,11 +399,12 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
           <div className="h-full flex flex-col">
             {/* Main Video Area */}
             <div className="flex-1 p-4 overflow-auto bg-gray-950">
-              <VideoFeed 
+              <VideoFeed
                 showLocalVideo={true}
                 showRemoteParticipants={true}
                 maxParticipants={12}
                 className="h-full"
+                mirrorLocalVideo={mirrorLocalVideo}
               />
             </div>
 
@@ -406,7 +454,7 @@ function ClassroomContent({ classroomId, user, onLeave }: ClassroomContentProps)
  * Main Classroom component with DailyProvider wrapper
  * Provides Daily.co context to child components
  */
-export default function Classroom({ classroomId, user, onLeave }: ClassroomProps) {
+export default function Classroom({ classroomId, user, onLeave, mirrorLocalVideo }: ClassroomProps) {
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
   const callRef = React.useRef<DailyCall | null>(null);
 
@@ -419,19 +467,21 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
         console.log('[Daily] Checking for existing singleton...');
         
         // If singleton already exists and is valid, reuse it
-        if (dailyCallSingleton) {
+        const existing = getClassroomCall();
+        if (existing) {
           console.log('[Daily] Reusing existing singleton instance');
           if (mounted) {
-            callRef.current = dailyCallSingleton;
-            setDailyCall(dailyCallSingleton);
+            callRef.current = existing;
+            setDailyCall(existing);
           }
           return;
         }
 
         // If initialization is already in progress, wait for it
-        if (initializationPromise) {
+        const existingPromise = getClassroomInitPromise();
+        if (existingPromise) {
           console.log('[Daily] Waiting for ongoing initialization...');
-          const call = await initializationPromise;
+          const call = await existingPromise;
           if (mounted) {
             callRef.current = call;
             setDailyCall(call);
@@ -441,7 +491,7 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
 
         // Start new initialization
         console.log('[Daily] Starting new initialization...');
-        initializationPromise = (async () => {
+        const initPromise = (async () => {
           // Dynamic import to avoid SSR issues
           const Daily = (await import('@daily-co/daily-js')).default;
           
@@ -453,11 +503,12 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
           });
 
           console.log('[Daily] Call object created successfully');
-          dailyCallSingleton = call;
+          setClassroomCall(call);
           return call;
         })();
+        setClassroomInitPromise(initPromise);
 
-        const call = await initializationPromise;
+        const call = await initPromise;
         
         // Only set state if component is still mounted
         if (mounted) {
@@ -466,7 +517,7 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
         }
       } catch (error) {
         console.error('[Daily] Failed to initialize:', error);
-        initializationPromise = null;
+        setClassroomInitPromise(null);
       }
     };
 
@@ -493,10 +544,11 @@ export default function Classroom({ classroomId, user, onLeave }: ClassroomProps
 
   return (
     <DailyProvider callObject={dailyCall}>
-      <ClassroomContent 
-        classroomId={classroomId} 
-        user={user} 
-        onLeave={onLeave} 
+      <ClassroomContent
+        classroomId={classroomId}
+        user={user}
+        onLeave={onLeave}
+        mirrorLocalVideo={mirrorLocalVideo}
       />
     </DailyProvider>
   );

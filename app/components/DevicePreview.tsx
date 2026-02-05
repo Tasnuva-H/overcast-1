@@ -10,9 +10,10 @@
  * a classroom. This reduces technical issues and improves the user experience.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DailyProvider, useDaily, useDevices, DailyVideo, useLocalParticipant } from '@daily-co/daily-react';
 import { DailyCall } from '@daily-co/daily-js';
+import { parseDailyError } from '@/lib/daily-utils';
 
 interface DevicePreviewProps {
   onClose?: () => void;
@@ -27,30 +28,30 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   const localParticipant = useLocalParticipant();
   const [isStarted, setIsStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mirror is preview-only here; the authoritative value for the call is set on the video options screen at "Enter room"
+  // Default off (unmirrored) per spec 005; user can turn mirror on in device setup.
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
 
   // Start local media preview
+  const startPreview = async () => {
+    if (!daily) return;
+    setError(null);
+    try {
+      console.log('[DevicePreview] Starting local media preview...');
+      await daily.startCamera();
+      setIsStarted(true);
+      console.log('[DevicePreview] Preview started successfully');
+    } catch (err) {
+      console.error('[DevicePreview] Failed to start preview:', err);
+      const parsed = parseDailyError(err);
+      setError(parsed.message);
+    }
+  };
+
   useEffect(() => {
     if (!daily || isStarted) return;
-
-    const startPreview = async () => {
-      try {
-        console.log('[DevicePreview] Starting local media preview...');
-        await daily.startCamera();
-        setIsStarted(true);
-        console.log('[DevicePreview] Preview started successfully');
-      } catch (err) {
-        console.error('[DevicePreview] Failed to start preview:', err);
-        setError('Failed to access camera/microphone. Please check permissions.');
-      }
-    };
-
     startPreview();
-
-    // Cleanup on unmount - Daily.co automatically stops camera when component unmounts
-    // The parent component handles destroy() in its cleanup
-    return () => {
-      // No explicit cleanup needed - handled by DailyProvider
-    };
+    return () => {};
   }, [daily, isStarted]);
 
   // Handle camera change
@@ -96,17 +97,26 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
           )}
         </div>
 
-        {/* Error message */}
+        {/* Error message + Try again when start preview fails */}
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
-            {error}
+            <p className="mb-2">{error}</p>
+            <button
+              type="button"
+              onClick={startPreview}
+              className="text-teal-400 hover:text-teal-300 font-medium text-sm"
+            >
+              Try again
+            </button>
           </div>
         )}
 
-        {/* Video preview */}
-        <div className="mb-6">
+        {/* Video preview: mirror toggle flips preview (CSS only; call mirror set on video options at Enter room) */}
+        <div className="mb-4">
           <h3 className="text-white font-medium mb-2 text-sm">Camera Preview</h3>
-          <div className="relative rounded-lg overflow-hidden bg-gray-800 aspect-video">
+          <div
+            className={`relative rounded-lg overflow-hidden bg-gray-800 aspect-video ${mirrorEnabled ? 'scale-x-[-1]' : ''}`}
+          >
             {localParticipant && isStarted ? (
               <DailyVideo
                 sessionId={localParticipant.session_id}
@@ -122,6 +132,21 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Mirror toggle (preview-only; default on for selfie-style view) */}
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="device-preview-mirror"
+            checked={mirrorEnabled}
+            onChange={(e) => setMirrorEnabled(e.target.checked)}
+            className="rounded text-teal-500 focus:ring-teal-500"
+            aria-label="Mirror preview"
+          />
+          <label htmlFor="device-preview-mirror" className="text-gray-300 cursor-pointer text-sm">
+            Mirror preview
+          </label>
         </div>
 
         {/* Camera selection */}
@@ -183,44 +208,73 @@ function DevicePreviewContent({ onClose }: DevicePreviewProps) {
   );
 }
 
+// Module-level single preview call so we never run createCallObject() twice (avoids
+// "Duplicate DailyIframe" when React Strict Mode runs the effect twice before first create completes).
+let previewCall: DailyCall | null = null;
+let previewCreatePromise: Promise<DailyCall> | null = null;
+let previewRefCount = 0;
+
+function getOrCreatePreviewCall(): Promise<DailyCall> {
+  if (previewCall) return Promise.resolve(previewCall);
+  if (previewCreatePromise) return previewCreatePromise;
+  previewCreatePromise = (async () => {
+    const Daily = (await import('@daily-co/daily-js')).default;
+    console.log('[DevicePreview] Creating call object for preview...');
+    const call = Daily.createCallObject({
+      audioSource: true,
+      videoSource: true,
+    });
+    previewCall = call;
+    return call;
+  })();
+  return previewCreatePromise;
+}
+
+function releasePreviewCall(): void {
+  previewRefCount--;
+  if (previewRefCount <= 0 && previewCall) {
+    console.log('[DevicePreview] Cleaning up Daily call object...');
+    previewCall.destroy();
+    previewCall = null;
+    previewCreatePromise = null;
+    previewRefCount = 0;
+  }
+}
+
 /**
- * DevicePreview wrapper with DailyProvider
+ * DevicePreview wrapper with DailyProvider.
+ * Uses module-level single create so only one Daily call exists (avoids "Duplicate DailyIframe" error).
  */
 export default function DevicePreview({ onClose }: DevicePreviewProps) {
   const [dailyCall, setDailyCall] = useState<DailyCall | null>(null);
+  const callRef = useRef<DailyCall | null>(null);
 
   useEffect(() => {
     let mounted = true;
-
-    const initializeDaily = async () => {
-      try {
-        // Dynamic import to avoid SSR issues
-        const Daily = (await import('@daily-co/daily-js')).default;
-        
-        console.log('[DevicePreview] Creating call object for preview...');
-        const call = Daily.createCallObject({
-          audioSource: true,
-          videoSource: true
-        });
-
-        if (mounted) {
-          setDailyCall(call);
+    getOrCreatePreviewCall()
+      .then((call) => {
+        if (!mounted) {
+          call.destroy();
+          previewCall = null;
+          previewCreatePromise = null;
+          return;
         }
-      } catch (error) {
+        previewRefCount++;
+        callRef.current = call;
+        setDailyCall(call);
+      })
+      .catch((error) => {
         console.error('[DevicePreview] Failed to initialize Daily:', error);
-      }
-    };
-
-    initializeDaily();
-
+      });
     return () => {
       mounted = false;
-      if (dailyCall) {
-        console.log('[DevicePreview] Cleaning up Daily call object...');
-        dailyCall.destroy();
+      if (callRef.current) {
+        callRef.current = null;
+        releasePreviewCall();
       }
+      setDailyCall(null);
     };
-  }, [dailyCall]);
+  }, []);
 
   if (!dailyCall) {
     return (

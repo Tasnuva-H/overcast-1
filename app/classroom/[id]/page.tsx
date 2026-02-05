@@ -34,21 +34,18 @@ function ClassroomPageContent({ params }: { params: Promise<{ id: string }> }) {
   // React.use() suspends the component until the params are available.
   const { id } = use(params);
 
-  // Extract user data from URL parameters
-  // WHY: We pass user data via URL params from the lobby page.
-  // This approach works for local development without requiring authentication.
-  // In production, this would be replaced with proper session management.
+  // Extract user data and mirror preference from URL parameters
   const userName = searchParams.get('name') || 'Anonymous';
   const userRole = (searchParams.get('role') || 'student') as 'student' | 'instructor';
   const sessionId = searchParams.get('sessionId') || crypto.randomUUID();
+  const mirrorLocalVideo = searchParams.get('mirror') === 'true';
 
-  // Construct user object
   const user: AppUser = {
     name: userName,
     role: userRole,
     sessionId: sessionId,
     currentClassroom: id,
-    joinedAt: new Date()
+    joinedAt: new Date(),
   };
 
   /**
@@ -66,10 +63,11 @@ function ClassroomPageContent({ params }: { params: Promise<{ id: string }> }) {
   };
 
   return (
-    <Classroom 
+    <Classroom
       classroomId={id}
       user={user}
       onLeave={handleLeaveClassroom}
+      mirrorLocalVideo={mirrorLocalVideo}
     />
   );
 }
